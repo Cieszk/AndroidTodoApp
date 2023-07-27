@@ -22,9 +22,7 @@ class MainActivity : ComponentActivity() {
         val tasksViewModel = TasksViewModel(taskDao)
 
         setContent {
-            TasksScreen(tasksViewModel) {
-            }
+            TasksScreen(tasksViewModel)
         }
     }
 }
-

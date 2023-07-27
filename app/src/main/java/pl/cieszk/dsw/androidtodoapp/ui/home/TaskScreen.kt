@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.ModalBottomSheetLayout
 import androidx.compose.material.ModalBottomSheetValue
@@ -35,7 +37,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import com.google.accompanist.insets.LocalWindowInsets
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import pl.cieszk.dsw.androidtodoapp.database.model.Task
 import java.util.Date
@@ -43,13 +50,13 @@ import java.util.Date
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
-fun TasksScreen(
-    viewModel: TasksViewModel,
-    navigateToTaskEntry: (Int) -> Unit
-) {
+fun TasksScreen(viewModel: TasksViewModel) {
     val tasks by viewModel.tasksFlow.collectAsState(emptyList())
     val sheetState = rememberModalBottomSheetState(ModalBottomSheetValue.Hidden)
     val coroutineScope = rememberCoroutineScope()
+
+    val imePadding =
+        with(LocalDensity.current) { LocalWindowInsets.current.ime.bottom.toDp() }
 
     ModalBottomSheetLayout(
         sheetState = sheetState,
@@ -83,25 +90,33 @@ fun TasksScreen(
                     }
                 )
             },
-            floatingActionButtonPosition = FabPosition.End,
-            content = {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(tasks) { task ->
-                        TaskItem(task, { updatedTask ->
-                            viewModel.updateTask(updatedTask)
-                        }, navigateToTaskEntry)
-                    }
+            floatingActionButtonPosition = FabPosition.End
+        ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = imePadding) // Apply the padding to the bottom
+            ) {
+                items(tasks) { task ->
+                    TaskItem(
+                        task,
+                        viewModel::updateTask,
+                        viewModel::deleteTask
+                    )
                 }
             }
-        )
+        }
     }
 }
 
 
 @Composable
 fun NewTaskForm(onCreateTask: (String, String) -> Unit) {
+
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
+    val focusRequester1 = remember { FocusRequester() }
+    val focusRequester2 = remember { FocusRequester() }
 
     Column(
         modifier = Modifier
@@ -111,7 +126,13 @@ fun NewTaskForm(onCreateTask: (String, String) -> Unit) {
         TextField(
             value = title,
             onValueChange = { title = it },
-            label = { Text("Task title") }
+            label = { Text("Task title") },
+            keyboardActions = KeyboardActions(
+                onDone = { focusRequester2.requestFocus() }
+            ),
+            keyboardOptions = KeyboardOptions.Default.copy(imeAction = androidx.compose.ui.text.input.ImeAction.Next),
+            modifier = Modifier.focusRequester(focusRequester1)
+
         )
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -119,7 +140,9 @@ fun NewTaskForm(onCreateTask: (String, String) -> Unit) {
         TextField(
             value = description,
             onValueChange = { description = it },
-            label = { Text("Task description") }
+            label = { Text("Task description") },
+            keyboardOptions = KeyboardOptions.Default.copy(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+            modifier = Modifier.focusRequester(focusRequester2)
         )
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -130,68 +153,59 @@ fun NewTaskForm(onCreateTask: (String, String) -> Unit) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun TaskItem(task: Task, onTaskStatusChange: (Task) -> Unit, navigateToTaskEntry: (Int) -> Unit) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        onClick = { navigateToTaskEntry(task.id) }
+
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    fun TaskItem(
+        task: Task,
+        onTaskStatusChange: (Task) -> Unit,
+        onTaskDelete: (Task) -> Unit
     ) {
-        Row(modifier = Modifier.padding(16.dp)) {
-            Column(Modifier.weight(1f)) {
-                Text(text = task.title, style = MaterialTheme.typography.titleLarge)
-            }
-            Switch(
-                checked = task.done,
-                onCheckedChange = { isChecked ->
-                    val updatedTask = task.copy(done = isChecked)
-                    onTaskStatusChange(updatedTask)
+        var isExpanded by remember { mutableStateOf(false) }
+        val coroutineScope = rememberCoroutineScope()
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            onClick = { isExpanded = !isExpanded }
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Row {
+                    Column(Modifier.weight(1f)) {
+                        Text(text = task.title, style = MaterialTheme.typography.titleLarge)
+                    }
+                    Switch(
+                        checked = task.done,
+                        onCheckedChange = { isChecked ->
+                            val updatedTask = task.copy(done = isChecked)
+                            onTaskStatusChange(updatedTask)
+                            if (isChecked) {
+                                coroutineScope.launch {
+                                    delay(200)
+                                    onTaskDelete(task)
+                                }
+                            }
+                        }
+                    )
                 }
-            )
+
+                // This part is only visible when the card is clicked
+                if (isExpanded) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(text = task.description, style = MaterialTheme.typography.bodyLarge)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Created: ${task.creationDate}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+            }
         }
     }
-}
-
-//class MockTaskDao : TaskDao {
-//    private val tasks = listOf(
-//        Task(1, "Task 1", "This is task 1", false, Date()),
-//        Task(2, "Task 2", "This is task 2", true, Date())
-//    )
-//
-//    override fun getAllTasks(): Flow<List<Task>> = flowOf(tasks)
-//
-//    override fun getTask(id: Int): Flow<Task> = flowOf(tasks.first { it.id == id })
-//
-//    // For insert, update and delete methods we don't do anything as they're not used in preview
-//    override suspend fun insertTasks(tasks: Task) {}
-//
-//    override suspend fun updateTask(task: Task) {}
-//
-//    override suspend fun deleteTask(task: Task) {}
-//}
-//
-//class MockTasksViewModel :
-//    TasksViewModel(MockTaskDao()) { // assuming your ViewModel can take a nullable Dao
-//    // Replace with your own mock data
-//    override val tasksFlow = flowOf(
-//        listOf(
-//            Task(1, "Task 1", "This is task 1", false, Date()),
-//            Task(2, "Task 2", "This is task 2", true, Date())
-//        )
-//    )
-//}
-//
-//@Preview(showBackground = true)
-//@Composable
-//fun TasksScreenPreview() {
-//    val mockViewModel = MockTasksViewModel()
-//    TasksScreen(mockViewModel) {
-//        // no action for preview
-//    }
-//}
-
 
 
 

@@ -1,4 +1,4 @@
-package pl.cieszk.dsw.androidtodoapp.database.dao;
+package pl.cieszk.dsw.androidtodoapp.database.dao
 
 import androidx.room.Dao
 import androidx.room.Delete

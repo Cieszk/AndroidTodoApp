@@ -3,6 +3,7 @@ package pl.cieszk.dsw.androidtodoapp.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import pl.cieszk.dsw.androidtodoapp.database.dao.TaskDao
 import pl.cieszk.dsw.androidtodoapp.database.model.Task
@@ -26,5 +27,8 @@ open class TasksViewModel(private val taskDao: TaskDao) : ViewModel() {
         viewModelScope.launch {
             taskDao.deleteTask(task)
         }
+    }
+    fun getTask(id: Int): Flow<Task?> {
+        return taskDao.getTask(id).map { it }
     }
 }
